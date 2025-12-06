@@ -10,22 +10,34 @@ public class GameManager : MonoBehaviour
     public Text LivesText; // Tambah untuk menampilkan nyawa
     public GameObject losePanel;
     public GameObject pauseMenuPanel;
-    public GameObject ghostPrefab;
     public int coinsPerGhost = 5;
     private int totalCoinsCollected = 0;
     
     // Sistem Nyawa
     public int maxLives = 3;
     public int currentLives;
-    public GameObject playerSpawnPoint; // Posisi spawn player
+    public GameObject[] playerSpawnPoints; // Kumpulan posisi spawn player
     private GameObject player;
-    public GameObject powerUpPrefab;
+   
+
+    // Coin Spawn System
+    public GameObject coinPrefab; // Prefab coin yang akan di-spawn
+    public GameObject[] coinSpawnPoints; // Kumpulan posisi spawn coin
+    public int maxCoinsOnMap = 5; // Jumlah maksimal koin yang ada di map secara bersamaan
+    private System.Collections.Generic.HashSet<GameObject> occupiedCoinSpawns = new System.Collections.Generic.HashSet<GameObject>();
+
+    // Ghost Spawn System
+    public GameObject[] ghostSpawnPoints; // Kumpulan posisi spawn ghost
+    private System.Collections.Generic.HashSet<GameObject> occupiedGhostSpawns = new System.Collections.Generic.HashSet<GameObject>();
+    public GameObject[] ghostPrefabs; // Array untuk multiple ghost models
+    public string[] ghostTypes = { "Standard", "Fast"}; // Type masing-masing prefab
+
+
 
     // Difficulty Settings
     public float ghostSpeedMultiplier = 1f;
     public bool isPaused = false;
-
-
+    
     void Awake()
     {
         if (Instance == null) Instance = this; else Destroy(gameObject);
@@ -35,7 +47,9 @@ public class GameManager : MonoBehaviour
     {
         currentLives = maxLives;
         player = GameObject.FindGameObjectWithTag("Player");
+        InitializeCoins();
         UpdateUI();
+
     }
     void Update()
     {
@@ -46,68 +60,170 @@ public class GameManager : MonoBehaviour
     }
 
     public void AddCoins(int amount)
-{
-    currentCoins += amount;
-    totalCoinsCollected += amount;
-    
-    // Spawn ghost hanya jika totalCoinsCollected adalah kelipatan coinsPerGhost dan bukan 0
-    if (totalCoinsCollected > 0 && totalCoinsCollected % coinsPerGhost == 0)
     {
-        SpawnGhost();
+        currentCoins += amount;
+        totalCoinsCollected += amount;
+        
+        // Spawn ghost hanya jika totalCoinsCollected adalah kelipatan coinsPerGhost dan bukan 0
+        if (totalCoinsCollected > 0 && totalCoinsCollected % coinsPerGhost == 0)
+        {
+            SpawnGhost();
+        }
+        
+        UpdateUI();
     }
-    
-    UpdateUI();
-}
 
-    // ...existing code...
+    // Coin Spawn System Methods
+    void InitializeCoins()
+    {
+        if (coinSpawnPoints == null || coinSpawnPoints.Length == 0)
+        {
+            Debug.LogWarning("Coin spawn points belum di-set di GameManager!");
+            return;
+        }
 
+        if (coinPrefab == null)
+        {
+            Debug.LogWarning("Coin prefab belum di-set di GameManager!");
+            return;
+        }
+
+        // Spawn coin sejumlah maxCoinsOnMap dari spawn points yang tersedia
+        int coinsToSpawn = Mathf.Min(maxCoinsOnMap, coinSpawnPoints.Length);
+        
+        for (int i = 0; i < coinsToSpawn; i++)
+        {
+            GameObject spawnPoint = GetRandomAvailableSpawnPoint();
+            if (spawnPoint != null)
+            {
+                SpawnCoinAtPoint(spawnPoint);
+            }
+        }
+    }
+
+    void SpawnCoinAtPoint(GameObject spawnPoint)
+    {
+        if (spawnPoint == null || occupiedCoinSpawns.Contains(spawnPoint))
+            return;
+
+        GameObject coin = Instantiate(coinPrefab, spawnPoint.transform.position, Quaternion.identity);
+        occupiedCoinSpawns.Add(spawnPoint);
+    }
+
+    public void OnCoinCollected(GameObject coin)
+    {
+        // Cari spawn point terdekat dengan coin yang diambil
+        GameObject closestSpawnPoint = FindClosestSpawnPoint(coin.transform.position);
+        
+        if (closestSpawnPoint != null)
+        {
+            // Tandai spawn point ini sebagai kosong
+            occupiedCoinSpawns.Remove(closestSpawnPoint);
+            
+            // Spawn coin baru di spawn point yang berbeda dan belum terpakai
+            GameObject availableSpawnPoint = GetRandomAvailableSpawnPoint();
+            if (availableSpawnPoint != null)
+            {
+                SpawnCoinAtPoint(availableSpawnPoint);
+            }
+        }
+    }
+
+    GameObject FindClosestSpawnPoint(Vector3 position)
+    {
+        GameObject closest = null;
+        float minDistance = float.MaxValue;
+
+        foreach (GameObject spawnPoint in coinSpawnPoints)
+        {
+            if (spawnPoint != null)
+            {
+                float distance = Vector3.Distance(position, spawnPoint.transform.position);
+                if (distance < minDistance)
+                {
+                    minDistance = distance;
+                    closest = spawnPoint;
+                }
+            }
+        }
+
+        return closest;
+    }
+
+    GameObject GetRandomAvailableSpawnPoint()
+    {
+        System.Collections.Generic.List<GameObject> availableSpawns = new System.Collections.Generic.List<GameObject>();
+
+        foreach (GameObject spawnPoint in coinSpawnPoints)
+        {
+            if (spawnPoint != null && !occupiedCoinSpawns.Contains(spawnPoint))
+            {
+                availableSpawns.Add(spawnPoint);
+            }
+        }
+
+        if (availableSpawns.Count > 0)
+        {
+            int randomIndex = Random.Range(0, availableSpawns.Count);
+            return availableSpawns[randomIndex];
+        }
+
+        return null;
+    }
+
+    // Ghost Spawn System Methods
     void SpawnGhost()
     {
-        Vector3 spawnPos = GetRandomValidPosition();
-        Instantiate(ghostPrefab, spawnPos, Quaternion.identity);
+        if (ghostSpawnPoints == null || ghostSpawnPoints.Length == 0)
+        {
+            Debug.LogWarning("Ghost spawn points belum di-set di GameManager!");
+            return;
+        }
+
+        GameObject spawnPoint = GetRandomAvailableGhostSpawnPoint();
+        if (spawnPoint != null)
+        {
+            // Pilih random ghost prefab
+            int ghostIndex = Random.Range(0, ghostPrefabs.Length);
+            GameObject ghostPrefab = ghostPrefabs[ghostIndex];
+            
+            GameObject ghost = Instantiate(ghostPrefab, spawnPoint.transform.position, Quaternion.identity);
+            
+            // Set tipe ghost
+            EnemyAI enemyAI = ghost.GetComponent<EnemyAI>();
+            if (enemyAI != null)
+            {
+                enemyAI.ghostType = ghostTypes[ghostIndex];
+            }
+            
+            occupiedGhostSpawns.Add(spawnPoint);
+        }
+        else
+        {
+            Debug.LogWarning("Tidak ada ghost spawn point yang tersedia!");
+        }
     }
 
-    Vector3 GetRandomValidPosition()
+    GameObject GetRandomAvailableGhostSpawnPoint()
     {
-        Vector3 randomPos;
-        int maxAttempts = 10;
+        System.Collections.Generic.List<GameObject> availableSpawns = new System.Collections.Generic.List<GameObject>();
 
-        for (int i = 0; i < maxAttempts; i++)
+        foreach (GameObject spawnPoint in ghostSpawnPoints)
         {
-            float minX = -10f, maxX = 10f, minZ = -10f, maxZ = 10f;
-            randomPos = new Vector3(
-                Random.Range(minX, maxX),
-                1f,
-                Random.Range(minZ, maxZ)
-            );
-
-            if (IsPositionValid(randomPos))
+            if (spawnPoint != null && !occupiedGhostSpawns.Contains(spawnPoint))
             {
-                return randomPos;
+                availableSpawns.Add(spawnPoint);
             }
         }
 
-        return new Vector3(0, 1f, 0);
-    }
-
-    bool IsPositionValid(Vector3 position)
-    {
-        float checkRadius = 1f;
-
-        Collider[] colliders = Physics.OverlapSphere(position, checkRadius);
-
-        foreach (Collider col in colliders)
+        if (availableSpawns.Count > 0)
         {
-            if (col.CompareTag("Wall") || col.name.Contains("Wall"))
-            {
-                return false;
-            }
+            int randomIndex = Random.Range(0, availableSpawns.Count);
+            return availableSpawns[randomIndex];
         }
 
-        return true;
+        return null;
     }
-
-    // ...existing code...
 
     public void UpdateUI()
     {
@@ -147,6 +263,32 @@ public class GameManager : MonoBehaviour
 
     Vector3 GetRespawnPosition(Vector3 ghostPos)
     {
+        // Jika ada spawn points yang ditentukan, gunakan yang terjauh dari ghost
+        if (playerSpawnPoints != null && playerSpawnPoints.Length > 0)
+        {
+            GameObject farthestSpawnPoint = null;
+            float maxDistance = 0f;
+
+            foreach (GameObject spawnPoint in playerSpawnPoints)
+            {
+                if (spawnPoint != null)
+                {
+                    float distance = Vector3.Distance(spawnPoint.transform.position, ghostPos);
+                    if (distance > maxDistance)
+                    {
+                        maxDistance = distance;
+                        farthestSpawnPoint = spawnPoint;
+                    }
+                }
+            }
+
+            if (farthestSpawnPoint != null)
+            {
+                return farthestSpawnPoint.transform.position;
+            }
+        }
+
+        // Fallback: cari posisi random yang jauh dari ghost
         Vector3 respawnPos;
         int maxAttempts = 10;
 
@@ -167,13 +309,24 @@ public class GameManager : MonoBehaviour
             }
         }
 
-        return playerSpawnPoint ? playerSpawnPoint.transform.position : new Vector3(0, 1f, 0);
+        // Fallback terakhir
+        return new Vector3(0, 1f, 0);
     }
 
     public void PlayerDied()
     {
         if (losePanel) losePanel.SetActive(true);
         Time.timeScale = 0f;
+
+        if (losePanel) losePanel.SetActive(true);
+        Time.timeScale = 0f; // Pause game
+        
+        // Tambahkan GraphicRaycaster untuk UI
+        GraphicRaycaster raycaster = losePanel.GetComponent<GraphicRaycaster>();
+        if (raycaster == null)
+        {
+            raycaster = losePanel.AddComponent<GraphicRaycaster>();
+        }
     }
 
     // Pause Menu Functions

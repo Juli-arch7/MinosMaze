@@ -16,15 +16,39 @@ public class EnemyAI : MonoBehaviour
     float lastSeenTime = Mathf.Infinity;
     private float ghostSpeed = 5f;
 
+    public string ghostType = "Standard";
+    private Animator animator;
     void Start()
     {
         agent = GetComponent<NavMeshAgent>();
+        SetGhostProperties();
         if (patrolPoints.Count > 0) agent.SetDestination(patrolPoints[0].position);
+    }
+
+    void SetGhostProperties()
+    {
+        switch(ghostType)
+        {
+            case "Fast":
+                ghostSpeed = 8f;
+                chaseDistance = 12f;
+                break;
+            case "Slow":
+                ghostSpeed = 3f;
+                chaseDistance = 5f;
+                break;
+            default: // Standard
+                ghostSpeed = 5f;
+                chaseDistance = 8f;
+                break;
+        }
     }
 
     void Update()
     {
         float dist = Vector3.Distance(transform.position, player.position);
+        float currentSpeed = ghostSpeed * GameManager.Instance.ghostSpeedMultiplier;
+        agent.speed = currentSpeed;
 
         switch(state)
         {
@@ -38,11 +62,18 @@ public class EnemyAI : MonoBehaviour
                 SearchUpdate(dist);
                 break;
         }
-        float currentSpeed = ghostSpeed * GameManager.Instance.ghostSpeedMultiplier;
-
-        // Transitions
-        if (dist <= chaseDistance) { state = State.Chase; lastSeenTime = 0f; }
-        else if (state == State.Chase) { lastSeenTime += Time.deltaTime; if (lastSeenTime >= loseSightTime) state = State.Search; }
+        // State Transitions
+        if (dist <= chaseDistance) 
+        { 
+            state = State.Chase; 
+            lastSeenTime = 0f; 
+        }
+        else if (state == State.Chase) 
+        { 
+            lastSeenTime += Time.deltaTime; 
+            if (lastSeenTime >= loseSightTime) 
+                state = State.Search; 
+        }
     }
 
     void PatrolUpdate(float dist)
@@ -67,6 +98,14 @@ public class EnemyAI : MonoBehaviour
         {
             state = State.Patrol;
             if (patrolPoints.Count>0) agent.SetDestination(patrolPoints[currentPatrol].position);
+        }
+    }
+
+    void OnTriggerEnter(Collider collision)
+    {
+        if (collision.CompareTag("Player"))
+        {
+            GameManager.Instance.PlayerHitByGhost(gameObject);
         }
     }
 

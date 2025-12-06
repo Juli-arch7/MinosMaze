@@ -9,62 +9,51 @@ public class PowerUp : MonoBehaviour
     public float moveInterval = 5f; // Interval perpindahan dalam detik
     private bool isCollected = false;
     private float moveTimer = 0f;
+    
+    // Spawn points yang dapat dikonfigurasi di Inspector
+    public Transform[] spawnPoints;
+    
+    // UI References
+    public PowerUpUIManager powerUpUIManager;
 
     void Start()
     {
         moveTimer = moveInterval;
+        powerUpUIManager = FindObjectOfType<PowerUpUIManager>();
+        
+        // Jika tidak ada spawn points yang ditentukan, pindahkan ke spawn point random saat start
+        if (spawnPoints != null && spawnPoints.Length > 0)
+        {
+            MoveToRandomSpawnPoint();
+        }
     }
 
     void Update()
     {
         // Perpindahan otomatis setiap interval
-        if (!isCollected)
+        if (!isCollected && spawnPoints != null && spawnPoints.Length > 0)
         {
             moveTimer -= Time.deltaTime;
             if (moveTimer <= 0f)
             {
-                MoveToRandomPosition();
+                MoveToRandomSpawnPoint();
                 moveTimer = moveInterval;
             }
         }
     }
 
-    void MoveToRandomPosition()
+    void MoveToRandomSpawnPoint()
     {
-        Vector3 newPos = GetRandomValidPosition();
-        transform.position = newPos;
-    }
-
-    Vector3 GetRandomValidPosition()
-    {
-        Vector3 randomPos;
-        int maxAttempts = 10;
-        
-        for (int i = 0; i < maxAttempts; i++)
+        if (spawnPoints == null || spawnPoints.Length == 0)
         {
-            float minX = -10f, maxX = 10f, minZ = -10f, maxZ = 10f;
-            randomPos = new Vector3(
-                Random.Range(minX, maxX),
-                transform.position.y,
-                Random.Range(minZ, maxZ)
-            );
-
-            if (IsPositionValid(randomPos))
-                return randomPos;
+            Debug.LogWarning("Tidak ada spawn points yang ditentukan untuk PowerUp!");
+            return;
         }
-        
-        return transform.position; // Jika gagal, tetap di posisi lama
-    }
 
-    bool IsPositionValid(Vector3 position)
-    {
-        Collider[] colliders = Physics.OverlapSphere(position, 0.5f);
-        foreach (Collider col in colliders)
-        {
-            if (col.CompareTag("Wall"))
-                return false;
-        }
-        return true;
+        // Pilih spawn point random
+        Transform randomSpawnPoint = spawnPoints[Random.Range(0, spawnPoints.Length)];
+        transform.position = randomSpawnPoint.position;
+        transform.rotation = randomSpawnPoint.rotation;
     }
 
     void OnTriggerEnter(Collider other)
@@ -77,7 +66,7 @@ public class PowerUp : MonoBehaviour
             // Reset untuk dapat diambil kembali
             isCollected = false;
             moveTimer = moveInterval;
-            MoveToRandomPosition();
+            MoveToRandomSpawnPoint();
         }
     }
 
@@ -91,6 +80,12 @@ public class PowerUp : MonoBehaviour
                     GameManager.Instance.currentLives++;
                     GameManager.Instance.UpdateUI();
                     Debug.Log("Extra Life! Nyawa: " + GameManager.Instance.currentLives);
+                    
+                    // Update UI
+                    if (powerUpUIManager)
+                    {
+                        powerUpUIManager.ShowPowerUpActivated("Extra Life");
+                    }
                 }
                 break;
 
@@ -108,12 +103,38 @@ public class PowerUp : MonoBehaviour
             playerController.SetGhostKillerMode(true);
         }
 
-        yield return new WaitForSeconds(powerUpDuration);
+        // Tampilkan aktivasi power-up
+        if (powerUpUIManager)
+        {
+            powerUpUIManager.ShowPowerUpActivated("Ghost Killer");
+        }
+
+        float timeRemaining = powerUpDuration;
+        
+        // Update durasi setiap frame
+        while (timeRemaining > 0)
+        {
+            timeRemaining -= Time.deltaTime;
+            
+            if (powerUpUIManager)
+            {
+                powerUpUIManager.UpdateGhostKillerDuration(timeRemaining, powerUpDuration);
+            }
+            
+            yield return null;
+        }
 
         if (playerController)
         {
             playerController.SetGhostKillerMode(false);
         }
+        
+        // Sembunyikan UI durasi
+        if (powerUpUIManager)
+        {
+            powerUpUIManager.HideGhostKillerDuration();
+        }
+        
         Debug.Log("Ghost Killer mode expired!");
     }
 }

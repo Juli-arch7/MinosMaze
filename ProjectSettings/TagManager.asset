@@ -6,6 +6,7 @@ TagManager:
   tags:
   - Wall
   - Ghost
+  - Ground
   layers:
   - Default
   - TransparentFX
@@ -13,7 +14,7 @@ TagManager:
   - Wall
   - Water
   - UI
-  - 
+  - Ground
   - 
   - 
   - 
